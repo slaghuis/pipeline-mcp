@@ -1,0 +1,3 @@
+listen: ":8766"
+registry_path: ${HOME}/.config/ai-factory/services.yaml
+reports_dir: ${HOME}/.local/share/ai-factory/reports
