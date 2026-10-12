@@ -21,7 +21,7 @@ mkdir -p ~/.config/ai-factory
 cat > ~/.config/ai-factory/services.yaml <<EOF
 services:
   - name: myservice
-    path: ~/code/services/myservice
+    path: ${HOME}/code/services/myservice
     pipeline_binary: ./bin/pipeline
     config: ./pipeline.yaml
     default_env: staging

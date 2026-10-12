@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/slaghuis/pipeline-mcp/internal/registry"
 	"github.com/slaghuis/pipeline-mcp/internal/metrics"
+	"github.com/slaghuis/pipeline-mcp/internal/registry"
 )
 
 type Result struct {
@@ -57,43 +57,13 @@ func (r *Runner) Run(ctx context.Context, s registry.Service, args []string) (*R
 	}
 
 	res := &Result{
-		Service: s.Name, Command: args[0],
+		Service:   s.Name,
+		Command:   args[0],
 		ExitCode:  exit,
 		Stderr:    stderr.String(),
 		StartedAt: start,
 		DurationS: time.Since(start).Seconds(),
 	}
-
-	status := "success"
-	if res.ExitCode != 0 {
-		status = "failure"
-	}
-	metrics.Runs.WithLabelValues(svc.Name, command, status).Inc()
-	metrics.Duration.WithLabelValues(svc.Name, command).Observe(dur.Seconds())
-
-	// Parse report JSON to emit per-stage metrics
-	if len(res.ReportJSON) > 0 {
-		var rep struct {
-			Stages []struct {
-				Name      string  `json:"name"`
-				Success   bool    `json:"success"`
-				Skipped   bool    `json:"skipped"`
-				DurationS float64 `json:"duration_s"`
-			} `json:"stages"`
-		}
-		if err := json.Unmarshal(res.ReportJSON, &rep); err == nil {
-			for _, s := range rep.Stages {
-				if s.Skipped {
-					continue
-				}
-				metrics.StageDuration.WithLabelValues(svc.Name, s.Name).Observe(s.DurationS)
-				if !s.Success {
-					metrics.StageFailures.WithLabelValues(svc.Name, s.Name).Inc()
-				}
-			}
-		}
-	}
-
 
 	// stdout should be a JSON report. If not, surface raw.
 	trimmed := bytes.TrimSpace(stdout.Bytes())
@@ -106,7 +76,42 @@ func (r *Runner) Run(ctx context.Context, s registry.Service, args []string) (*R
 		res.Stderr = res.Stderr + "\n" + stdout.String()
 	}
 
+	recordMetrics(res)
+
 	return res, nil
+}
+
+func recordMetrics(res *Result) {
+	status := "success"
+	if res.ExitCode != 0 {
+		status = "failure"
+	}
+	metrics.Runs.WithLabelValues(res.Service, res.Command, status).Inc()
+	metrics.Duration.WithLabelValues(res.Service, res.Command).Observe(res.DurationS)
+
+	if len(res.Report) == 0 {
+		return
+	}
+	var rep struct {
+		Stages []struct {
+			Name      string  `json:"name"`
+			Success   bool    `json:"success"`
+			Skipped   bool    `json:"skipped"`
+			DurationS float64 `json:"duration_s"`
+		} `json:"stages"`
+	}
+	if err := json.Unmarshal(res.Report, &rep); err != nil {
+		return
+	}
+	for _, st := range rep.Stages {
+		if st.Skipped {
+			continue
+		}
+		metrics.StageDuration.WithLabelValues(res.Service, st.Name).Observe(st.DurationS)
+		if !st.Success {
+			metrics.StageFailures.WithLabelValues(res.Service, st.Name).Inc()
+		}
+	}
 }
 
 // LatestReport returns the newest archived report for a service.

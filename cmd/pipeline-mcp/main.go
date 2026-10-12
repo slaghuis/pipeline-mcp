@@ -7,13 +7,11 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
-	"strings"
 	"syscall"
 
 	"github.com/mark3labs/mcp-go/server"
-	"gopkg.in/yaml.v3"
 
+	"github.com/slaghuis/pipeline-mcp/internal/config"
 	"github.com/slaghuis/pipeline-mcp/internal/metrics"
 	"github.com/slaghuis/pipeline-mcp/internal/registry"
 	"github.com/slaghuis/pipeline-mcp/internal/runner"
@@ -43,33 +41,17 @@ RULES OF THUMB:
 - A failed stage returns exit_code != 0; parse report.stages to find which stage failed.
 `
 
-type cfg struct {
-	Listen       string `yaml:"listen"`
-	ServicesFile string `yaml:"services_file"`
-	ReportsDir   string `yaml:"reports_dir"`
-}
-
 func main() {
 	cfgPath := flag.String("config", "config.yaml", "config path")
 	flag.Parse()
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
-	b, err := os.ReadFile(*cfgPath)
+	c, err := config.Load(*cfgPath)
 	if err != nil {
 		log.Fatalf("config: %v", err)
 	}
-	var c cfg
-	if err := yaml.Unmarshal(b, &c); err != nil {
-		log.Fatalf("yaml: %v", err)
-	}
-	c.ServicesFile = expand(c.ServicesFile)
-	c.ReportsDir = expand(c.ReportsDir)
-	if c.Listen == "" {
-		c.Listen = ":8766"
-	}
-
-	reg, err := registry.New(c.ServicesFile)
+	reg, err := registry.New(c.RegistryPath)
 	if err != nil {
 		log.Fatalf("registry: %v", err)
 	}
@@ -96,7 +78,7 @@ func main() {
 	)
 	tools.RegisterList(s, reg)
 	tools.RegisterRun(s, reg, run)
-	tools.RegisterLatest(s, run)
+	tools.RegisterStatus(s, run)
 
 	sse := server.NewSSEServer(s)
 
@@ -110,12 +92,4 @@ func main() {
 	if err := http.ListenAndServe(c.Listen, mux); err != nil {
 		log.Fatal(err)
 	}
-}
-
-func expand(p string) string {
-	if strings.HasPrefix(p, "~/") {
-		home, _ := os.UserHomeDir()
-		return filepath.Join(home, p[2:])
-	}
-	return p
 }
