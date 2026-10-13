@@ -42,6 +42,22 @@ EOF
 pipeline-mcp -config ~/.config/ai-factory/pipeline-mcp.yaml
 ```
 
+### Run as a background service (macOS launchd)
+```
+scripts/launchd.sh install     # build, install LaunchAgent, start, health-check
+scripts/launchd.sh status      # launchd state + /metrics check
+scripts/launchd.sh reload      # re-read services.yaml (SIGHUP)
+scripts/launchd.sh restart
+scripts/launchd.sh logs        # tail ~/Library/Logs/pipeline-mcp.log
+scripts/launchd.sh uninstall
+```
+The agent starts at login and is restarted if it exits. launchd does not read
+your shell profile, so `install` records the current `PATH` (pipelines need
+`go`, `docker`, etc.); re-run `install` after changing it. Secrets that
+pipelines read (e.g. `REGISTRY_PASSWORD`, `KUBECONFIG`) go in
+`~/.config/ai-factory/pipeline-mcp.env` as `KEY=value` lines; it is loaded on
+every start, so `restart` after editing it.
+
 ## Wire into agents
 Add to `~/.config/opencode/opencode.json`:
 ```
